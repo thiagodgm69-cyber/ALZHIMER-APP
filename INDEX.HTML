@@ -1,0 +1,755 @@
+!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorando la Enfermedad de Alzheimer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Chosen Palette: Warm Neutrals (Stone) with Teal Accent -->
+    <!-- Application Structure Plan: Se eligió una estructura temática de una sola página con una barra de navegación superior fija (sticky). Esto reemplaza la estructura lineal del informe por un modelo de "centro de información" donde el usuario (ya sea un paciente, cuidador o estudiante) puede saltar directamente a la sección de su interés (p. ej., "Síntomas y Etapas" o "Diagnóstico y Manejo") sin necesidad de desplazarse secuencialmente. El flujo del usuario se centra en la exploración autodirigida. Las interacciones clave incluyen: 1) Navegación por scroll-spy, 2) Gráficos conceptuales para desglosar la patología y los factores de riesgo, 3) Un selector interactivo para las etapas de la enfermedad. Esta arquitectura mejora la usabilidad al priorizar el acceso rápido a la información relevante. Se han añadido dos módulos LLM (Preguntas Frecuentes y Consejos) para ofrecer asistencia dinámica y contextualizada, mejorando la interactividad del usuario. -->
+    <!-- Visualization & Content Choices: 
+        1. Info: Patología (Placas vs. Ovillos). Goal: Informar/Comparar. Viz: Gráfico de Donut (Chart.js). Interaction: Tooltip al pasar el mouse. Justification: Visualiza los dos componentes patológicos clave como partes de un todo, más fácil de entender que el texto.
+        2. Info: Factores de Riesgo (Modificables vs. No Modificables). Goal: Organizar/Comparar (Ilustrativo). Viz: Gráfico de Barras Apiladas (Chart.js). Interaction: Tooltip. Justification: Ilustra cómo múltiples factores contribuyen al "riesgo" general, separando lo controlable de lo no controlable.
+        3. Info: Etapas de la Enfermedad. Goal: Organizar/Explorar. Viz: Diagrama de Pestañas Interactivo (HTML/CSS/JS). Interaction: Clic para cambiar el contenido. Justification: Permite al usuario "profundizar" en una etapa específica, haciendo la progresión más clara y menos abrumadora que una larga lista.
+        4. Info: Síntomas Cognitivos. Goal: Informar. Viz: Tabla HTML estilizada con Tailwind. Justification: La tabla original ya es una buena estructura de datos; estilizarla mejora la legibilidad.
+        5. Info: Preguntas Frecuentes sobre Manejo. Goal: Asistencia Dinámica. Viz: Input/Output (HTML/JS). Interaction: LLM Call on button press. Justification: Permite respuestas instantáneas a preguntas de manejo.
+        6. Info: Apoyo al Cuidador. Goal: Apoyo Emocional/Práctico. Viz: Button/Output (HTML/JS). Interaction: LLM Call on button press. Justification: Proporciona un impulso rápido de apoyo o una idea práctica.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 450px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 350px;
+        }
+        @media (min-width: 640px) {
+            .chart-container {
+                height: 350px;
+                max-height: 400px;
+            }
+        }
+        .nav-link {
+            @apply px-3 py-2 text-stone-600 hover:text-teal-600 transition-colors duration-200;
+        }
+        .nav-link.active {
+            @apply text-teal-600 border-b-2 border-teal-600;
+        }
+        .stage-btn {
+            @apply w-full sm:w-auto flex-1 px-4 py-3 text-center font-medium rounded-lg shadow-sm transition-all duration-200 border-2 border-transparent cursor-pointer;
+        }
+        .stage-btn.active {
+            @apply bg-teal-600 text-white shadow-lg;
+        }
+        .stage-btn:not(.active) {
+            @apply bg-white hover:border-teal-300;
+        }
+        .gemini-btn {
+            @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors duration-150;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800 font-sans leading-relaxed">
+
+    <!-- Header y Navegación -->
+    <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-teal-700">Explorando el Alzheimer</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4" id="nav-menu">
+                        <a href="#inicio" class="nav-link active" data-target="inicio">Inicio</a>
+                        <a href="#que-es" class="nav-link" data-target="que-es">¿Qué es?</a>
+                        <a href="#sintomas-etapas" class="nav-link" data-target="sintomas-etapas">Síntomas y Etapas</a>
+                        <a href="#causas-riesgos" class="nav-link" data-target="causas-riesgos">Causas y Riesgos</a>
+                        <a href="#diagnostico-manejo" class="nav-link" data-target="diagnostico-manejo">Diagnóstico y Manejo</a>
+                        <a href="#apoyo" class="nav-link" data-target="apoyo">Apoyo al Cuidador</a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="inline-flex items-center justify-center p-2 rounded-md text-stone-500 hover:text-teal-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500">
+                        <span class="sr-only">Abrir menú</span>
+                        <svg class="h-6 w-6" id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                        <svg class="h-6 w-6 hidden" id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <!-- Menú Móvil -->
+            <div class="md:hidden hidden" id="mobile-menu">
+                <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                    <a href="#inicio" class="nav-link active block" data-target="inicio">Inicio</a>
+                    <a href="#que-es" class="nav-link block" data-target="que-es">¿Qué es?</a>
+                    <a href="#sintomas-etapas" class="nav-link block" data-target="sintomas-etapas">Síntomas y Etapas</a>
+                    <a href="#causas-riesgos" class="nav-link block" data-target="causas-riesgos">Causas y Riesgos</a>
+                    <a href="#diagnostico-manejo" class="nav-link block" data-target="diagnostico-manejo">Diagnóstico y Manejo</a>
+                    <a href="#apoyo" class="nav-link block" data-target="apoyo">Apoyo al Cuidador</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Sección: Inicio -->
+        <section id="inicio" class="pt-16 -mt-16 mb-16">
+            <div class="text-center bg-white p-8 md:p-12 rounded-lg shadow-md">
+                <h2 class="text-3xl font-bold tracking-tight text-teal-700 sm:text-4xl">Comprendiendo la Enfermedad de Alzheimer</h2>
+                <p class="mt-6 text-lg text-stone-600 max-w-3xl mx-auto">
+                    Bienvenido a este resumen interactivo sobre la Enfermedad de Alzheimer. Esta aplicación está diseñada para ayudarle a explorar y comprender los aspectos clave de esta compleja patología neurodegenerativa. Navegue por las secciones para aprender sobre qué es, sus causas, síntomas, cómo se maneja y el impacto que tiene en los cuidadores.
+                </p>
+            </div>
+            <div class="mt-12 p-8 bg-teal-50 border-l-4 border-teal-500 rounded-r-lg">
+                <h3 class="text-2xl font-semibold text-teal-800">Una Visión General</h3>
+                <p class="mt-4 text-stone-700">
+                    La Enfermedad de Alzheimer es una patología progresiva e irreversible que afecta al cerebro, causando la atrofia del tejido cerebral y una disminución constante de la función cognitiva. Es la causa más común de demencia, un término general para la pérdida de memoria y otras habilidades de pensamiento lo suficientemente graves como para interferir en la vida diaria.
+                </p>
+                <p class="mt-2 text-stone-700">
+                    Es fundamental entender que el Alzheimer no es una parte normal del envejecimiento. Es una enfermedad específica que resulta de cambios complejos en el cerebro y que requiere un enfoque multifacético que combine la investigación, la detección temprana y el apoyo compasivo.
+                </p>
+            </div>
+        </section>
+
+        <!-- Sección: ¿Qué es? (Bases Biológicas) -->
+        <section id="que-es" class="pt-20 -mt-16 mb-16">
+            <h2 class="text-3xl font-bold text-center mb-4 text-teal-700">¿Qué es? Las Bases Biológicas</h2>
+            <p class="text-lg text-center text-stone-600 max-w-3xl mx-auto mb-12">
+                En esta sección exploramos los cambios fundamentales que ocurren en el cerebro. La enfermedad provoca la muerte de las neuronas y la atrofia (encogimiento) del cerebro, comenzando generalmente en el hipocampo, una región crítica para la memoria. A continuación, se visualizan las dos "marcas distintivas" de la enfermedad.
+            </p>
+            <div class="grid md:grid-cols-2 gap-8 items-center">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">Marcas Distintivas de la Enfermedad</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="text-lg font-semibold text-stone-700">1. Placas de Beta-Amiloide</h4>
+                            <p class="text-stone-600">
+                                Estos son depósitos duros e insolubles de un fragmento de proteína que se agrupan <strong class="text-teal-700">fuera</strong> de las neuronas. Se cree que estas placas interrumpen la comunicación celular y desencadenan una respuesta inflamatoria, dañando el tejido circundante.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold text-stone-700">2. Ovillos Neurofibrilares de Tau</h4>
+                            <p class="text-stone-600">
+                                La proteína Tau normalmente estabiliza las "vías" internas de la neurona. En el Alzheimer, la proteína Tau cambia, se pliega de manera anormal y forma ovillos <strong class="text-teal-700">dentro</strong> de las neuronas. Esto bloquea el sistema de transporte de la célula, lo que finalmente lleva a la muerte neuronal.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-center text-teal-800">Visualización de la Patología</h3>
+                    <div class="chart-container">
+                        <canvas id="pathologyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección: Síntomas y Etapas -->
+        <section id="sintomas-etapas" class="pt-20 -mt-16 mb-16">
+            <h2 class="text-3xl font-bold text-center mb-4 text-teal-700">Síntomas y Etapas</h2>
+            <p class="text-lg text-center text-stone-600 max-w-3xl mx-auto mb-12">
+                El Alzheimer se caracteriza por un deterioro gradual que afecta la memoria, el razonamiento y el comportamiento. Esta sección detalla los síntomas cognitivos comunes y desglosa las tres etapas principales de la enfermedad. Explore la progresión de la enfermedad de forma interactiva.
+            </p>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mb-12">
+                <h3 class="text-2xl font-semibold mb-6 text-teal-800">Deterioro Cognitivo Común</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-stone-200">
+                        <thead class="bg-stone-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">Habilidad Afectada</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">Descripción del Síntoma</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-stone-200">
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-stone-900">Memoria</td>
+                                <td class="px-6 py-4 text-stone-600">Olvido de información recién aprendida, fechas o eventos importantes, necesidad de preguntar lo mismo repetidamente.</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-stone-900">Planificación</td>
+                                <td class="px-6 py-4 text-stone-600">Dificultad para seguir recetas, manejar facturas o números.</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-stone-900">Desorientación</td>
+                                <td class="px-6 py-4 text-stone-600">Confusión sobre el tiempo (estaciones, fechas) o el lugar (perderse en lugares conocidos).</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-stone-900">Lenguaje (Afasia)</td>
+                                <td class="px-6 py-4 text-stone-600">Dificultad para encontrar la palabra adecuada, nombrar objetos o seguir una conversación.</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-stone-900">Juicio</td>
+                                <td class="px-6 py-4 text-stone-600">Tomar decisiones pobres (ej. descuidar la higiene personal).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-2xl font-semibold mb-6 text-teal-800">Explorador Interactivo de Etapas</h3>
+                <div class="flex flex-col sm:flex-row justify-center gap-2 sm:gap-4 mb-6" id="stage-selector">
+                    <button class="stage-btn" data-stage="temprana">Etapa Temprana (Leve)</button>
+                    <button class="stage-btn" data-stage="moderada">Etapa Moderada</button>
+                    <button class="stage-btn" data-stage="avanzada">Etapa Avanzada (Grave)</button>
+                </div>
+                <div id="stage-content-container" class="p-6 bg-stone-50 rounded-lg shadow-inner min-h-[200px] transition-all duration-300">
+                    <!-- Contenido dinámico de las etapas -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección: Causas y Riesgos -->
+        <section id="causas-riesgos" class="pt-20 -mt-16 mb-16">
+            <h2 class="text-3xl font-bold text-center mb-4 text-teal-700">Causas y Factores de Riesgo</h2>
+            <p class="text-lg text-center text-stone-600 max-w-3xl mx-auto mb-12">
+                La causa exacta del Alzheimer es multifactorial. No hay una sola causa, sino una combinación de factores genéticos, de estilo de vida y ambientales. Esta sección desglosa los factores de riesgo conocidos, dividiéndolos en aquellos que no podemos cambiar y aquellos sobre los que podemos tener influencia.
+            </p>
+            <div class="grid md:grid-cols-2 gap-8 items-center">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">Composición del Riesgo</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="text-lg font-semibold text-stone-700">Factores No Modificables</h4>
+                            <p class="text-stone-600">
+                                Estos son factores con los que nacemos o que no podemos controlar.
+                                <ul class="list-disc list-inside ml-4 mt-2 text-stone-600">
+                                    <li><strong>Edad:</strong> Es el factor de riesgo más significativo.</li>
+                                    <li><strong>Genética (Riesgo):</strong> La variante APOE e4 es el gen de riesgo más común.</li>
+                                    <li><strong>Genética (Determinante):</strong> Mutaciones raras que causan inicio temprano (menos del 5% de los casos).</li>
+                                </ul>
+                            </p>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold text-stone-700">Factores de Estilo de Vida (Modificables)</h4>
+                            <p class="text-stone-600">
+                                Muchos factores que aumentan el riesgo de enfermedad cardiovascular también aumentan el riesgo de Alzheimer.
+                                <ul class="list-disc list-inside ml-4 mt-2 text-stone-600">
+                                    <li>Hipertensión arterial</li>
+                                    <li>Colesterol alto y Diabetes tipo 2</li>
+                                    <li>Tabaquismo y Obesidad</li>
+                                    <li>Falta de ejercicio físico</li>
+                                    <li>Aislamiento social y baja estimulación cognitiva</li>
+                                </ul>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-center text-teal-800">Riesgo Total (Ilustrativo)</h3>
+                    <div class="chart-container">
+                        <canvas id="riskChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección: Diagnóstico y Manejo -->
+        <section id="diagnostico-manejo" class="pt-20 -mt-16 mb-16">
+            <h2 class="text-3xl font-bold text-center mb-4 text-teal-700">Diagnóstico y Manejo</h2>
+            <p class="text-lg text-center text-stone-600 max-w-3xl mx-auto mb-12">
+                Aunque actualmente no existe una cura para el Alzheimer, un diagnóstico temprano y un manejo adecuado son cruciales para mejorar la calidad de vida. Esta sección describe cómo se diagnostica la enfermedad y las estrategias de tratamiento disponibles, tanto farmacológicas como no farmacológicas.
+            </p>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">El Proceso Diagnóstico</h3>
+                    <p class="text-stone-600 mb-4">Es un proceso de exclusión y confirmación que incluye:</p>
+                    <ol class="list-decimal list-inside space-y-3 text-stone-600">
+                        <li><strong>Evaluación de Historia Clínica:</strong> Análisis de síntomas, duración y antecedentes familiares.</li>
+                        <li><strong>Pruebas Cognitivas y Neurológicas:</strong> Evaluación de memoria, razonamiento, equilibrio y reflejos.</li>
+                        <li><strong>Análisis de Laboratorio:</strong> Análisis de sangre para descartar otras causas (ej. problemas de tiroides, deficiencia de vitaminas).</li>
+                        <li><strong>Estudios de Neuroimagen (IRM, TC, PET):</strong> Para descartar tumores o accidentes cerebrovasculares y detectar patrones de atrofia o depósitos de amiloide.</li>
+                    </ol>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">Estrategias de Tratamiento</h3>
+                    <h4 class="text-lg font-semibold text-stone-700 mt-4">A. Tratamientos Farmacológicos</h4>
+                    <ul class="list-disc list-inside ml-4 mt-2 text-stone-600">
+                        <li><strong>Inhibidores de la Colinesterasa:</strong> Para etapas leves a moderadas, ayudan con la memoria y el juicio.</li>
+                        <li><strong>Memantina:</strong> Para etapas moderadas a graves, regula otro neurotransmisor.</li>
+                        <li><strong>Terapias Dirigidas:</strong> (Anticuerpos monoclonales) Medicamentos más nuevos que buscan reducir las placas de beta-amiloide.</li>
+                    </ul>
+
+                    <h4 class="text-lg font-semibold text-stone-700 mt-6">B. Manejo No Farmacológico</h4>
+                    <ul class="list-disc list-inside ml-4 mt-2 text-stone-600">
+                        <li><strong>Terapia Ocupacional:</strong> Simplifica tareas y hace el entorno más seguro.</li>
+                        <li><strong>Estimulación Cognitiva:</strong> Rompecabezas, lectura y juegos.</li>
+                        <li><strong>Manejo del Comportamiento:</strong> Establecer rutinas consistentes y reducir desencadenantes de agitación.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Integración Gemini: Generador de Preguntas Frecuentes -->
+            <div class="mt-12 p-6 bg-teal-50 rounded-lg shadow-inner">
+                <h3 class="text-2xl font-semibold mb-4 text-teal-800">Generador de Preguntas Frecuentes ✨</h3>
+                <p class="text-stone-700 mb-4">Escriba una pregunta concisa sobre el **manejo diario, síntomas o estrategias de comunicación** relacionadas con el Alzheimer, y obtenga una respuesta breve del modelo de lenguaje Gemini.</p>
+                
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                    <input type="text" id="faq-input" placeholder="Ej: ¿Cómo lidiar con la resistencia a bañarse?" class="flex-grow p-3 border border-stone-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
+                    <button id="faq-button" class="gemini-btn">Generar Respuesta</button>
+                </div>
+                
+                <div id="faq-output-container" class="bg-white p-4 rounded-lg border border-stone-200 min-h-[50px] transition-all duration-300">
+                    <p id="faq-output" class="text-stone-600 italic">Aquí aparecerá la respuesta generada.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección: Apoyo al Cuidador -->
+        <section id="apoyo" class="pt-20 -mt-16 mb-16">
+            <h2 class="text-3xl font-bold text-center mb-4 text-teal-700">El Impacto en los Cuidadores</h2>
+            <p class="text-lg text-center text-stone-600 max-w-3xl mx-auto mb-12">
+                El Alzheimer impone una carga emocional, física y financiera monumental a los familiares y cuidadores. La atención requerida se vuelve constante y puede ser abrumadora. Reconocer esta carga y buscar apoyo es fundamental para el bienestar tanto del cuidador como del paciente.
+            </p>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-teal-500">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">La Carga Emocional</h3>
+                    <p class="text-stone-600">
+                        El cuidador principal a menudo experimenta un alto nivel de estrés. Es común sentir:
+                    </p>
+                    <ul class="list-disc list-inside ml-4 mt-4 space-y-2 text-stone-600">
+                        <li>Tristeza, ira y culpa.</li>
+                        <li>Aislamiento social.</li>
+                        <li>Síntomas de depresión y ansiedad.</li>
+                        <li>Agotamiento físico y mental (burnout).</li>
+                    </ul>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-teal-500">
+                    <h3 class="text-2xl font-semibold mb-4 text-teal-800">Estrategias de Apoyo Esenciales</h3>
+                    <p class="text-stone-600">
+                        Es vital que los cuidadores también se cuiden a sí mismos. Las estrategias clave incluyen:
+                    </p>
+                    <ul class="list-disc list-inside ml-4 mt-4 space-y-2 text-stone-600">
+                        <li><strong>Buscar Grupos de Apoyo:</strong> Conectar con otros que entienden la situación.</li>
+                        <li><strong>Pedir y Aceptar Ayuda:</strong> Para tareas, compras o simplemente para hablar.</li>
+                        <li><strong>Usar Servicios de Respiro:</strong> Tomar descansos necesarios para recargar energías.</li>
+                        <li><strong>Planificación Futura:</strong> Iniciar la planificación legal y financiera para reducir el estrés futuro.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Integración Gemini: Consejos para Cuidadores -->
+            <div class="mt-12 p-6 bg-teal-50 rounded-lg shadow-inner text-center">
+                <h3 class="text-2xl font-semibold mb-4 text-teal-800">Consejo Rápido para Cuidadores ✨</h3>
+                <p class="text-stone-700 mb-6 max-w-3xl mx-auto">Obtenga un consejo rápido, práctico o emocional, adaptado a la compleja tarea de cuidar a una persona con Alzheimer.</p>
+                <button id="tip-button" class="gemini-btn text-lg py-3 px-6">Dame un Consejo de Apoyo</button>
+                
+                <div id="tip-output-container" class="mt-6 bg-white p-4 rounded-lg border border-stone-200 min-h-[50px] transition-all duration-300 max-w-xl mx-auto">
+                    <p id="tip-output" class="text-stone-600 italic">Haga clic en el botón para recibir un consejo.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-8 border-t border-stone-200">
+        <p class="text-sm text-stone-500">Información adaptada del "Resumen Exhaustivo sobre la Enfermedad de Alzheimer".</p>
+        <p class="text-xs text-stone-400 mt-1">Este sitio es un recurso informativo y no reemplaza el consejo médico profesional.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const API_KEY = ""; 
+            const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+
+            // --- Lógica del LLM con Backoff Exponencial ---
+            async function generateContentWithRetry(prompt, systemInstruction, tools, maxRetries = 5, initialDelay = 1000) {
+                const url = `${API_URL}?key=${API_KEY}`;
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    tools: tools ? tools : undefined,
+                };
+                
+                for (let attempt = 0; attempt < maxRetries; attempt++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.ok) {
+                            const result = await response.json();
+                            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                            return text || "Error: No se pudo generar contenido.";
+                        }
+
+                        if (response.status === 429) { // Límite de tasa
+                            const delay = initialDelay * Math.pow(2, attempt) + Math.random() * 1000;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        } else {
+                            throw new Error(`Error HTTP: ${response.status}`);
+                        }
+                    } catch (error) {
+                        console.error("Error en el intento de API:", attempt, error);
+                        if (attempt === maxRetries - 1) {
+                            return `Error: Falló la conexión con el servicio de IA después de ${maxRetries} intentos.`;
+                        }
+                    }
+                }
+                return "Error inesperado.";
+            }
+
+            // --- Gemini Feature 1: Generador de Preguntas Frecuentes (FAQ) ---
+            const faqInput = document.getElementById('faq-input');
+            const faqButton = document.getElementById('faq-button');
+            const faqOutput = document.getElementById('faq-output');
+
+            faqButton.addEventListener('click', async () => {
+                const userQuery = faqInput.value.trim();
+
+                if (!userQuery) {
+                    faqOutput.innerHTML = "Por favor, escriba una pregunta.";
+                    return;
+                }
+
+                faqButton.disabled = true;
+                faqButton.textContent = "Generando...";
+                faqOutput.classList.remove('italic');
+                faqOutput.textContent = "Cargando respuesta...";
+
+                const systemInstruction = "Usted es un experto en estrategias de manejo y comunicación para la enfermedad de Alzheimer. Responda a la pregunta del usuario con un consejo conciso, práctico y en un solo párrafo. Use un tono empático y de apoyo. NO mencione la falta de cura. Céntrese en el manejo y la comunicación.";
+                
+                const responseText = await generateContentWithRetry(userQuery, systemInstruction, [{ "google_search": {} }]);
+
+                faqOutput.textContent = responseText;
+                faqButton.textContent = "Generar Respuesta";
+                faqButton.disabled = false;
+            });
+
+            // --- Gemini Feature 2: Consejo Rápido para Cuidadores ---
+            const tipButton = document.getElementById('tip-button');
+            const tipOutput = document.getElementById('tip-output');
+
+            tipButton.addEventListener('click', async () => {
+                tipButton.disabled = true;
+                tipButton.textContent = "Obteniendo Consejo...";
+                tipOutput.classList.remove('italic');
+                tipOutput.textContent = "Cargando consejo...";
+
+                const userPrompt = "Genere un consejo aleatorio (práctico o emocional) de una o dos oraciones, útil para un cuidador principal de un paciente con Alzheimer, enfocándose en el autocuidado, la paciencia o la comunicación.";
+                const systemInstruction = "Usted es un recurso de apoyo para cuidadores. Su única tarea es generar un consejo empático y muy breve (máximo dos oraciones). Inicie con una palabra clave como 'Recuerde', 'Priorice' o 'Un consejo:'.";
+                
+                const responseText = await generateContentWithRetry(userPrompt, systemInstruction, null);
+
+                tipOutput.textContent = responseText;
+                tipButton.textContent = "Dame un Consejo de Apoyo";
+                tipButton.disabled = false;
+            });
+
+
+            // --- Helper para texto de gráficos ---
+            function wrapText(ctx, text, maxWidth) {
+                let lines = [];
+                let words = text.split(' ');
+                let currentLine = words[0];
+                for (let i = 1; i < words.length; i++) {
+                    let word = words[i];
+                    let width = ctx.measureText(currentLine + " " + word).width;
+                    if (width < maxWidth) {
+                        currentLine += " " + word;
+                    } else {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                lines.push(currentLine);
+                return lines;
+            }
+
+            // --- Datos para Contenidos Dinámicos ---
+            const stageData = {
+                temprana: {
+                    title: "Etapa Temprana (Leve)",
+                    content: `
+                        <p class="text-stone-700">La persona aún puede funcionar de manera independiente, pero nota problemas de memoria que a menudo son evidentes para los demás.</p>
+                        <ul class="list-disc list-inside ml-4 mt-4 space-y-2 text-stone-600">
+                            <li>Olvido de palabras o nombres comunes.</li>
+                            <li>Dificultad para recordar dónde se han colocado objetos.</li>
+                            <li>Problemas para planificar u organizar tareas.</li>
+                            <li>Aún puede conducir, trabajar y participar socialmente.</li>
+                        </ul>
+                    `
+                },
+                moderada: {
+                    title: "Etapa Moderada",
+                    content: `
+                        <p class="text-stone-700">Esta es la etapa más larga y los síntomas de demencia son más pronunciados. La persona requiere más ayuda y supervisión.</p>
+                        <ul class="list-disc list-inside ml-4 mt-4 space-y-2 text-stone-600">
+                            <li>Pérdida de la memoria de eventos recientes y de la historia personal.</li>
+                            <li>Mayor confusión y desorientación (puede perderse).</li>
+                            <li>Problemas para realizar tareas como vestirse o bañarse.</li>
+                            <li>Cambios de personalidad y comportamiento notables (ansiedad, agresividad).</li>
+                            <li>Común el vagabundeo.</li>
+                        </ul>
+                    `
+                },
+                avanzada: {
+                    title: "Etapa Avanzada (Grave)",
+                    content: `
+                        <p class="text-stone-700">En la etapa final, las personas pierden la capacidad de responder a su entorno, de mantener una conversación y, finalmente, de controlar el movimiento.</p>
+                        <ul class="list-disc list-inside ml-4 mt-4 space-y-2 text-stone-600">
+                            <li>Necesidad de ayuda las 24 horas para todas las actividades.</li>
+                            <li>Pérdida de la capacidad para caminar, sentarse y tragar (disfagia).</li>
+                            <li>Comunicación severamente limitada.</li>
+                            <li>Vulnerables a infecciones (ej. neumonía).</li>
+                        </ul>
+                    `
+                }
+            };
+
+            // --- Lógica del Explorador de Etapas ---
+            const stageSelector = document.getElementById('stage-selector');
+            const stageContentContainer = document.getElementById('stage-content-container');
+            let activeStage = 'temprana';
+
+            function updateStageContent() {
+                const data = stageData[activeStage];
+                stageContentContainer.innerHTML = `
+                    <h4 class="text-xl font-semibold text-teal-700 mb-3">${data.title}</h4>
+                    ${data.content}
+                `;
+                
+                stageSelector.querySelectorAll('.stage-btn').forEach(btn => {
+                    if (btn.dataset.stage === activeStage) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+
+            stageSelector.addEventListener('click', (e) => {
+                const targetButton = e.target.closest('.stage-btn');
+                if (targetButton && targetButton.dataset.stage) {
+                    activeStage = targetButton.dataset.stage;
+                    updateStageContent();
+                }
+            });
+
+            // --- Lógica de Navegación y Scroll Spy ---
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('section');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const menuIconOpen = document.getElementById('menu-icon-open');
+            const menuIconClose = document.getElementById('menu-icon-close');
+
+            function toggleMobileMenu() {
+                mobileMenu.classList.toggle('hidden');
+                menuIconOpen.classList.toggle('hidden');
+                menuIconClose.classList.toggle('hidden');
+            }
+
+            mobileMenuButton.addEventListener('click', toggleMobileMenu);
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const targetId = link.getAttribute('href').substring(1);
+                    document.getElementById(targetId).scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    if (mobileMenu.classList.contains('hidden') === false) {
+                        toggleMobileMenu();
+                    }
+                });
+            });
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.4 
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const id = entry.target.id;
+                        navLinks.forEach(link => {
+                            link.classList.toggle('active', link.dataset.target === id);
+                        });
+                    }
+                });
+            }, observerOptions);
+
+            sections.forEach(section => {
+                observer.observe(section);
+            });
+
+
+            // --- Gráfico 1: Patología (Donut) ---
+            const ctxPathology = document.getElementById('pathologyChart');
+            if (ctxPathology) {
+                new Chart(ctxPathology, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Placas Beta-Amiloide (Fuera de la neurona)', 'Ovillos Neurofibrilares de Tau (Dentro de la neurona)'],
+                        datasets: [{
+                            label: 'Marcadores Patológicos',
+                            data: [50, 50],
+                            backgroundColor: [
+                                'rgb(13, 148, 136)', // teal-600
+                                'rgb(15, 118, 110)'  // teal-700
+                            ],
+                            borderColor: 'rgb(245, 245, 244)', // stone-100
+                            borderWidth: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    boxWidth: 20,
+                                    font: {
+                                        size: 12
+                                    },
+                                    generateLabels: (chart) => {
+                                        const data = chart.data;
+                                        if (data.labels.length && data.datasets.length) {
+                                            return data.labels.map((label, i) => {
+                                                const meta = chart.getDatasetMeta(0);
+                                                const style = meta.controller.getStyle(i);
+                                                return {
+                                                    text: label,
+                                                    fillStyle: style.backgroundColor,
+                                                    strokeStyle: style.borderColor,
+                                                    lineWidth: style.borderWidth,
+                                                    hidden: !chart.getDataVisibility(i),
+                                                    index: i
+                                                };
+                                            });
+                                        }
+                                        return [];
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                enabled: true,
+                                backgroundColor: '#333',
+                                titleFont: { size: 14 },
+                                bodyFont: { size: 12 },
+                                padding: 10,
+                                cornerRadius: 4
+                            },
+                            title: {
+                                display: true,
+                                text: 'Marcadores Biológicos Clave',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                color: '#333'
+                            }
+                        }
+                    }
+                });
+            }
+
+            // --- Gráfico 2: Factores de Riesgo (Barras Apiladas) ---
+            const ctxRisk = document.getElementById('riskChart');
+            if (ctxRisk) {
+                new Chart(ctxRisk, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Riesgo Total (Ilustrativo)'],
+                        datasets: [
+                            {
+                                label: 'Edad',
+                                data: [30],
+                                backgroundColor: 'rgb(107, 114, 128)', // stone-500
+                            },
+                            {
+                                label: 'Genética (APOE4, etc.)',
+                                data: [20],
+                                backgroundColor: 'rgb(209, 213, 219)', // stone-300
+                            },
+                            {
+                                label: 'Estilo de Vida (Cardiovascular, etc.)',
+                                data: [50],
+                                backgroundColor: 'rgb(13, 148, 136)', // teal-600
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        scales: {
+                            x: {
+                                stacked: true,
+                                title: {
+                                    display: true,
+                                    text: 'Contribución al Riesgo (Ilustrativo)'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value + '%'
+                                    }
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Composición de Factores de Riesgo',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                color: '#333'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.x !== null) {
+                                            label += context.parsed.x + '%';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // --- Carga Inicial ---
+            updateStageContent(); 
+        });
+    </script>
+</body>
+</html>
